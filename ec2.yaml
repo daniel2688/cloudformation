@@ -1,0 +1,129 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Create EC2 Instance with Elastic IP"
+
+Parameters:
+  # Parámetro para elegir el tipo de instancia EC2
+  InstanceTypeParameter:
+    Description: "Choose the type of the instance"
+    Type: String
+    Default: "t2.micro"
+    AllowedValues: 
+      - t2.micro
+      - t2.small
+      - t2.medium
+    ConstraintDescription: "must be a valid EC2 instance type."
+
+  # Parámetro para definir el entorno (dev o prod)
+  EnvironmentParameter:
+    Description: "Choose the environment type"
+    Type: String
+    Default: "dev"
+    AllowedValues:
+      - dev
+      - prod
+
+  # Parámetro para especificar el ID de la AMI
+  ImageIdParameter:
+    Description: "The AMI ID for the EC2 instance"
+    Type: "AWS::EC2::Image::Id"
+    Default: "ami-06c68f701d8090592"
+    ConstraintDescription: "must be a valid AMI ID."
+
+  # Parámetro para el nombre de la instancia EC2
+  InstanceNameParameter:
+    Description: "The name of the EC2 instance"
+    Type: String
+    Default: "MyEC2Instance"
+    ConstraintDescription: "must be a valid EC2 instance name."
+
+  # Parámetro para el ID del VPC
+  VPCParameter:
+    Description: "The VPC for the EC2 instance"
+    Type: "AWS::EC2::VPC::Id"
+    ConstraintDescription: "must be a valid VPC ID."
+
+  # Parámetro para el ID de la subred
+  SubnetParameter:
+    Description: "The subnet for the EC2 instance"
+    Type: "AWS::EC2::Subnet::Id"
+    ConstraintDescription: "must be a valid subnet ID."
+
+  # Parámetro para el nombre del grupo de seguridad
+  SecurityGroupNameParameter:
+    Description: "The name of the Security Group"
+    Type: String
+    Default: "MySecurityGroup"
+    ConstraintDescription: "must be a valid Security Group name."
+
+  # Parámetro para el nombre de la etiqueta del Elastic IP
+  EIPTagName:
+    Description: "The name tag for the Elastic IP"
+    Type: String
+    Default: "MyElasticIP"
+    ConstraintDescription: "must be a valid name for the Elastic IP."
+
+Conditions:
+  # Condición que verifica si el entorno es producción
+  IsProd: !Equals [!Ref EnvironmentParameter, "prod"]
+
+Resources:
+  # Instancia EC2 que se crea solo si el entorno es producción
+  EC2Test:
+    Type: AWS::EC2::Instance
+    Condition: IsProd
+    Properties:
+      ImageId: !Ref ImageIdParameter
+      InstanceType: !Ref InstanceTypeParameter
+      SecurityGroupIds:
+        - !Ref InstanceSecurityGroup
+      SubnetId: !Ref SubnetParameter
+      Tags:
+        - Key: Name
+          Value: !Ref InstanceNameParameter
+
+  # Elastic IP que se asocia a la instancia EC2, solo si el entorno es producción
+  MyEIP:
+    Type: AWS::EC2::EIP
+    Condition: IsProd
+    Properties:
+      InstanceId: !Ref EC2Test
+      Tags:
+        - Key: Name
+          Value: !Ref EIPTagName
+
+  # Grupo de seguridad que permite el acceso SSH y HTTP
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupName: !Ref SecurityGroupNameParameter
+      VpcId: !Ref VPCParameter
+      GroupDescription: "Enable SSH access via port 22"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0  # Permite acceso SSH desde cualquier IP
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0  # Permite tráfico HTTP saliente hacia cualquier IP
+
+Outputs:
+  # ID de la instancia EC2 creada, solo si el entorno es producción
+  InstanceId:
+    Description: "Instance ID of the created EC2 instance"
+    Value: !Ref EC2Test
+    Condition: IsProd
+
+  # Dirección IP pública de la instancia EC2 creada, solo si el entorno es producción
+  InstancePublicIP:
+    Description: "Public IP address of the created instance"
+    Value: !GetAtt EC2Test.PublicIp
+    Condition: IsProd
+
+  # ID de asignación del Elastic IP, solo si el entorno es producción
+  EIPAllocationId:
+    Description: "Allocation ID of the Elastic IP"
+    Value: !Ref MyEIP
+    Condition: IsProd

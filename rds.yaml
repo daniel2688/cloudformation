@@ -1,0 +1,55 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "RDS Deploy in AWS"
+
+Parameters:
+  DBMotorParameter:
+    Description: "Motor para la DB"
+    Type: String
+    AllowedValues:
+      - "mysql"
+      - "postgres"
+      - "mariadb"
+      - "aurora"
+      - "aurora-mysql"
+      - "aurora-postgresql"
+    Default: "mysql"  # Si no se especifica, se asignará este valor por defecto
+
+  DBInstanceNameParameter:
+    Description: "Nombre para la instancia de BD"
+    Type: String
+
+  DBInstanceTypeParameter:
+    Description: "Tipo de instancia para la BD"
+    Type: String
+    AllowedValues:
+      - "db.t3.small"
+      - "db.t3.large"
+      - "db.t3.xlarge"
+    Default: "db.t3.small"
+  
+  DBTagsParameter:
+    Description: "Tags para la instancia de BD"
+    Type: String
+
+  MasterUsernameParameter:
+    Description: "Nombre de usuario maestro para la base de datos"
+    Type: String
+
+Resources:
+  RDSDeployTest:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBName: !Ref DBInstanceNameParameter  # Nombre de la base de datos
+      DBInstanceClass: !Ref DBInstanceTypeParameter  # Tipo de instancia para la BD
+      AllocatedStorage: "5"  # Almacenamiento asignado en GB
+      Engine: !Ref DBMotorParameter  # Motor de base de datos
+      MasterUsername: !Ref MasterUsernameParameter  # Nombre de usuario maestro
+      MasterUserPassword: "{{resolve:secretsmanager:arn:aws:secretsmanager:us-east-1:236609069548:secret:SecretManagerDB-FFv0Jd:SecretString:password}}"  # Recupera la contraseña del secreto
+      Tags:
+        - Key: "Description"
+          Value: !Ref DBTagsParameter  # Etiqueta para la descripción de la instancia
+
+Outputs:
+  DBInstanceIdentifier:
+    Description: "ID de la instancia de RDS"  # Salida que muestra el ID de la instancia de RDS creada
+    Value: !Ref RDSDeployTest  # Muestra el ID de la instancia de RDS como valor de salida

@@ -1,0 +1,86 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Lambda Deploy in AWS"
+
+Parameters:
+  S3BucketName:
+    Type: String
+    Description: "Nombre del bucket de S3 que contiene el código Lambda"
+  S3KeyName:
+    Type: String
+    Description: "Ruta al archivo zip del código Lambda en el bucket de S3"
+  LambdaRoleName:
+    Type: String
+    Description: "Nombre del rol IAM para la función Lambda"
+  RoleDescription:
+    Type: String
+    Description: "Descripción del rol IAM para la función Lambda"
+  LambdaFunctionName:
+    Type: String
+    Description: "Nombre de la función Lambda"
+  LambdaDescription:
+    Type: String
+    Description: "Descripción de la función Lambda"
+  RoleTags:
+    Type: String
+    Description: "Etiquetas para el rol Lambda"
+    AllowedValues:
+      - prd
+      - dev
+      - qas
+    Default: "dev"
+
+Resources:
+  MyLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      PackageType: Zip
+      Architectures:
+        - arm64
+      Description: !Ref LambdaDescription  # Asigna la descripción de la función Lambda
+      FunctionName: !Ref LambdaFunctionName  # Asigna el nombre de la función Lambda
+      MemorySize: 128  # Tamaño de memoria asignado a la función Lambda
+      Timeout: 10  # Tiempo de espera máximo para ejecutar la función Lambda antes de que se cierre
+      Handler: index.handler  # Especifica el punto de entrada de la función Lambda
+      Runtime: python3.12  # Versión de Python utilizada por la función Lambda
+      Role: !GetAtt LambdaRole.Arn  # Asigna el rol IAM necesario para ejecutar la función Lambda
+      Code:
+        S3Bucket: !Ref S3BucketName  # Especifica el bucket S3 que contiene el código de la función Lambda
+        S3Key: !Ref S3KeyName  # Especifica la ruta y nombre del archivo ZIP que contiene el código Lambda
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: !Ref RoleDescription  # Asigna la descripción del rol IAM
+      RoleName: !Ref LambdaRoleName  # Nombre del rol IAM para la función Lambda
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com  # Permite a Lambda asumir este rol para ejecutar funciones
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup  # Permite la creación de grupos de registros en CloudWatch
+                  - logs:CreateLogStream  # Permite la creación de streams de registros en CloudWatch
+                  - logs:PutLogEvents  # Permite la escritura de eventos de registros en CloudWatch
+                Resource: arn:aws:logs:*:*:*  # Recurso específico de CloudWatch para la función Lambda
+              - Effect: Allow
+                Action:
+                  - s3:GetObject  # Permite a Lambda obtener el archivo ZIP desde S3
+                Resource: !Sub arn:aws:s3:::${S3BucketName}/${S3KeyName}  # Recurso específico de S3 para el archivo ZIP
+      Tags:
+        - Key: "environment"
+          Value: !Ref RoleTags  # Asigna la etiqueta de entorno al rol Lambda
+        - Key: "Proyecto"
+          Value: "Participa de un proyecto de arquitectura serverless"  # Asigna una etiqueta de proyecto al rol Lambda
+
+Outputs:
+  LambdaFunctionNameOutput:
+    Description: "Nombre de la función Lambda"  # Salida que muestra el nombre de la función Lambda creada
+    Value: !Ref MyLambdaFunction  # Muestra el nombre de la función Lambda como valor de salida

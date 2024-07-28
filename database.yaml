@@ -1,0 +1,140 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: A sample database stack for the AWS CloudFormation Step by Step course series
+
+Parameters:
+  # Parámetro para especificar la clase de la instancia RDS
+  DbClass:
+    Type: String
+    Description: The RDS DB instance class
+    AllowedValues:  # Valores permitidos para la clase de instancia
+      - db.t3.micro
+      - db.t3.medium
+      - db.t3.large
+    Default: db.t3.micro  # Valor por defecto
+    ConstraintDescription: Must be a valid RDS instance type.  # Mensaje de error si el valor no es válido
+
+  # Parámetro para el nombre de usuario maestro de la instancia RDS
+  MasterUsername:
+    Type: String
+    Description: The master username for the DB instance
+    MaxLength: 15  # Longitud máxima de 15 caracteres
+    AllowedPattern: "[a-zA-Z][a-zA-Z0-9]*"  # Expresión regular para validar el nombre de usuario
+
+  # Parámetro para la contraseña del usuario maestro de la instancia RDS
+  MasterUserPassword:
+    Type: String
+    NoEcho: true  # Oculta el valor del parámetro en la salida del stack
+    Description: The master user password for the DB instance
+    MinLength: 6  # Longitud mínima de 6 caracteres
+    AllowedPattern: "^[!-~]{8,128}$"  # Expresión regular para validar la contraseña
+    ConstraintDescription: Password must contain at least one uppercase letter, one lowercase letter, one digit, and one special character.  # Mensaje de error si la contraseña no cumple con los requisitos
+
+  # Parámetro para el nombre de la instancia RDS
+  DBName:
+    Type: String
+    Description: The DB name
+    AllowedPattern: "^[a-zA-Z][a-zA-Z0-9]*$"  # Expresión regular para validar el nombre de la instancia
+
+  # Parámetro para habilitar o deshabilitar Multi-AZ en la instancia RDS
+  MultiAZ:
+    Type: String
+    Description: Enable Multi-AZ on the DB instance?
+    AllowedValues: [true, false]  # Solo permite 'true' o 'false'
+    ConstraintDescription: Must be true or false.  # Mensaje de error si el valor no es válido
+
+  # Parámetro para el tamaño de almacenamiento de la instancia RDS en GiB
+  AllocatedStorage:
+    Type: Number
+    Description: The DB instance storage size in GiB
+    MinValue: 20  # Tamaño mínimo de 20 GiB
+    MaxValue: 30  # Tamaño máximo de 30 GiB
+    ConstraintDescription: Must be between 20 and 30 GiB.  # Mensaje de error si el valor no está dentro del rango
+
+  # Parámetro para especificar el ID de la VPC donde se creará la instancia RDS
+  VPCID:
+    Type: AWS::EC2::VPC::Id
+    Description: The VPC ID to create the DB instance
+
+  # Parámetro para especificar una lista de IDs de subnets para el grupo de subnets de la instancia RDS
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: A list of subnets to create the DB subnet group
+
+  # Parámetro para especificar el motor de la base de datos
+  DBMotor:
+    Type: String
+    Description: The DB engine
+    AllowedValues:
+      - mysql
+      - postgres
+      - oracle
+      - mariadb
+    Default: mysql
+
+  SecurityGroupPorts: 
+  # Type: StringCommaDelimitedList  # Usamos comas para separar cada valor
+    Type: List<Number>
+    Description: "Port numbers as a list: <web-server-port>,<database-ports>"
+    Default: "80,3306"
+
+Resources:  
+
+  Bastion:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-06c68f701d8090592
+      InstanceType: t2.micro
+      SubnetId: !Select [ 0, !Ref SubnetIds ]
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-Bastion'
+
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPCID  # Referencia al ID de la VPC especificado en los parámetros
+      GroupDescription: 'Web server instances security group'
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0  # Permite el acceso desde cualquier IP
+          FromPort: !Select [ 0, !Ref SecurityGroupPorts ]  # Puerto de inicio (web server)
+          ToPort: !Select [ 0, !Ref SecurityGroupPorts ]  # Puerto de fin (web server)
+          IpProtocol: tcp  # Protocolo TCP
+
+  # Recurso para crear un grupo de seguridad para la instancia RDS
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VPCID  # Referencia al ID de la VPC especificado en los parámetros
+      GroupDescription: 'Database instances security group'
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0  # Permite el acceso desde cualquier IP
+          FromPort: !Select [ 1, !Ref SecurityGroupPorts ]  # Puerto de inicio (database)
+          ToPort: !Select [ 1, !Ref SecurityGroupPorts ]  # Puerto de fin (database)
+          IpProtocol: tcp  # Protocolo TCP
+
+  # Recurso para crear un grupo de subnets para la instancia RDS
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: The subnets to launch DB instances
+      SubnetIds: !Ref SubnetIds
+
+  # Recurso para crear una instancia RDS
+  DatabaseInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete  # La instancia RDS será eliminada al eliminar el stack
+    Properties:
+      AllocatedStorage: !Ref AllocatedStorage  # Referencia al tamaño de almacenamiento especificado en los parámetros
+      BackupRetentionPeriod: 0  # Periodo de retención de backups (0 días, sin backups)
+      DBInstanceClass: !Ref DbClass  # Referencia a la clase de instancia especificada en los parámetros
+      Engine: !Ref DBMotor  # Motor de base de datos
+      MasterUsername: !Ref MasterUsername  # Referencia al nombre de usuario maestro especificado en los parámetros
+      MasterUserPassword: !Ref MasterUserPassword  # Referencia a la contraseña del usuario maestro especificada en los parámetros
+      MultiAZ: !Ref MultiAZ  # Referencia a la configuración Multi-AZ especificada en los parámetros
+      PubliclyAccessible: false  # La instancia RDS no será accesible públicamente
+      DBSubnetGroupName: !Ref DbSubnetGroup  # Referencia al grupo de subnets creado
+      VPCSecurityGroups:
+        - !Ref DbSecurityGroup  # Referencia al grupo de seguridad creado
+      Tags:
+        - Key: name
+          Value: !Ref DBName  # Referencia al nombre de la instancia especificado en los parámetros

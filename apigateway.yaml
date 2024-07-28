@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "API Deploy in AWS"
+
+Parameters:
+  ApiNameParameter:
+    Description: "Nombre para la API Gateway"
+    Type: String
+    Default: "TestApiGateway"
+  LambdaArn:
+    Description: "ARN de la funcion Lambda"
+    Type: String
+  StageName:
+    Description: "Nombre del stage de la API Gateway"
+    Type: String
+  StageDescription:
+    Description: "Descripcion del stage de la API Gateway"
+    Type: String
+
+Resources:
+  TestApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Ref ApiNameParameter
+      Description: "Creación de API Gateway"
+
+  ApiResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref TestApiGateway
+      ParentId: !GetAtt TestApiGateway.RootResourceId
+      PathPart: "path"
+
+  ApiMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref TestApiGateway
+      ResourceId: !Ref ApiResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: "Empty"
+      OperationName: "LambdaIntegration"
+
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LambdaArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${TestApiGateway}/*/GET/path
+
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref TestApiGateway
+      Description: !Ref StageDescription
+    DependsOn: ApiMethod
+
+  ApiStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref TestApiGateway
+      DeploymentId: !Ref ApiDeployment
+      StageName: !Ref StageName
+      Description: !Ref StageDescription
+    DeletionPolicy: Delete
+
+Outputs:
+  ApiInvokeURL:
+    Description: "URL para invocar la API"
+    Value: !Sub "https://${TestApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${StageName}/path/"

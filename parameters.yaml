@@ -1,0 +1,88 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Plantilla de ejemplo para crear una VPC, subnet, grupo de seguridad e instancia EC2"
+Parameters:
+  InstanceTypeParameter:
+    Description: "Tipo de instancia EC2 para la plantilla"
+    Type: String
+    AllowedValues:
+      - t2.micro
+      - t2.small
+      - t2.medium
+    Default: t2.micro
+
+  AMIParameter:
+    Description: "ID de la imagen AMI para la instancia EC2"
+    Type: AWS::EC2::Image::Id  # Validará que esta AMI exista en AWS, usar esta como ejemplo: ami-01b799c439fd5516a
+
+  VpcCIDRParameter:
+    Description: "CIDR Block para la VPC"
+    Type: String
+
+  SubnetCIDRParameter:
+    Description: "CIDR Block para la subnet dentro de la VPC"
+    Type: String
+
+  SecurityGroupDescriptionParameter:
+    Description: "Descripción para el grupo de seguridad"
+    Type: String
+
+  TagsParameter:
+    Description: "Etiquetas para los recursos de la plantilla"
+    Type: String
+    AllowedValues:
+         - test
+         - dev
+         - prod
+
+Resources:
+  MyVPC:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      CidrBlock: !Ref VpcCIDRParameter
+      Tags:
+        - Key: "Name"
+          Value: "MyVPC"
+
+  MySubnet:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: !Ref SubnetCIDRParameter
+      Tags:
+        - Key: "Name"
+          Value: "MySubnet"
+
+  MySecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: !Ref SecurityGroupDescriptionParameter
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"  # Permitir acceso HTTP desde cualquier IP
+
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"  # Permitir acceso HTTP desde cualquier IP
+    
+      Tags: 
+        - Key: "Name"
+          Value: "MySecurityGroup"
+      
+  EC2Instance:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      ImageId: !Ref AMIParameter
+      InstanceType: !Ref InstanceTypeParameter
+      SecurityGroupIds:
+        - !Ref MySecurityGroup  # Referencia directa al grupo de seguridad MySecurityGroup
+      SubnetId: !Ref MySubnet
+      Tags:
+        - Key: "Name"
+          Value: "MyEC2Instance"  # Etiqueta de nombre para la instancia EC2
+        - Key: "environment"
+          Value: !Ref TagsParameter

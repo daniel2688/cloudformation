@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  A database stack template that creates a master RDS instance and a read replica. 
+  It also provisions a security group and attaches to the db instances.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - 
+        Label:
+          default: Network Settings 
+        Parameters:
+          - VpcId
+          - DbSubnets 
+
+Parameters:  
+  # Lista de IDs de subredes donde se desplegarán las instancias de la base de datos
+  DbSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: 'Db subnet ids as a list: <subnet1>,<subnet2>,...'
+
+  # ID del VPC donde se desplegarán los recursos
+  VpcId:
+    Type: AWS::EC2::VPC::Id 
+    Description: A valid VPC id in your AWS account
+
+  # Parámetro para definir el entorno (producción o prueba)
+  Environment:
+    Type: String 
+    AllowedValues: [ test, production ]
+
+Conditions:
+  # Condición que verifica si el entorno es producción
+  EnvironmentIsProduction: !Equals [ !Ref Environment, production ]
+
+Resources:
+  # Grupo de seguridad para las instancias de la base de datos
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref VpcId
+      GroupDescription: 'Database instances security group'
+      SecurityGroupIngress:
+        - 
+          CidrIp: 0.0.0.0/0  # Permite acceso desde cualquier IP
+          FromPort: 3306      # Puerto de MySQL
+          ToPort: 3306        # Puerto de MySQL
+          IpProtocol: tcp     # Protocolo TCP
+
+  # Grupo de subredes para las instancias de RDS
+  DbSubnetGroup:
+    Type: 'AWS::RDS::DBSubnetGroup'
+    Properties:
+      DBSubnetGroupDescription: Subnets to launch db instances into
+      SubnetIds: !Ref DbSubnets  # Referencia a los IDs de las subredes proporcionadas
+
+  # Instancia principal de la base de datos
+  MasterDbInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceClass: db.t4g.micro   # Clase de instancia
+      Engine: mysql                   # Motor de base de datos
+      MultiAZ: false                  # No Multi-AZ
+      PubliclyAccessible: true        # Accesible públicamente
+      AllocatedStorage: 8             # Tamaño del almacenamiento en GB
+      MasterUsername: dbadmin         # Nombre de usuario del administrador
+      MasterUserPassword: dbpassword  # Contraseña del administrador
+      DBSubnetGroupName: !Ref DbSubnetGroup  # Referencia al grupo de subredes de la base de datos
+      VPCSecurityGroups: 
+        - !Ref DbSecurityGroup  # Referencia al grupo de seguridad de la base de datos
+
+  # Réplica de lectura de la instancia de la base de datos, creada solo si el entorno es producción
+  ReadReplica:
+    Type: AWS::RDS::DBInstance
+    Condition: EnvironmentIsProduction  # Solo se crea en entorno de producción
+    Properties:
+      SourceDBInstanceIdentifier: !Ref MasterDbInstance  # ID de la instancia principal
+      DBInstanceClass: db.t4g.micro   # Clase de instancia
+      Engine: mysql                   # Motor de base de datos
+      PubliclyAccessible: true        # Accesible públicamente
+      VPCSecurityGroups: 
+        - !Ref DbSecurityGroup  # Referencia al grupo de seguridad de la base de datos
+
+Outputs:
+  # Salida con el ARN de la instancia principal de la base de datos
+  MasterDbInstanceArn:
+    Description: "ARN of the Master DB Instance"
+    Value: !GetAtt MasterDbInstance.Arn  # Valor del ARN de la instancia principal
+
+  # Salida con el ID de la instancia de réplica de la base de datos (si es producción)
+  ReadReplicaDbInstanceId:
+    Condition: EnvironmentIsProduction  # Solo se crea en entorno de producción
+    Description: "ID of the Read Replica DB Instance"
+    Value: !Ref ReadReplica  # Valor del ID de la instancia de réplica
+
+  # Salida con el endpoint de la instancia de réplica de la base de datos (si es producción)
+  ReadReplicaDbInstanceEndpointAddress:
+    Condition: EnvironmentIsProduction  # Solo se crea en entorno de producción
+    Description: "Endpoint address of the Read Replica DB Instance"
+    Value: !GetAtt ReadReplica.Endpoint.Address  # Valor del endpoint de la instancia de réplica
+
+  # Salida con el ARN de la instancia de réplica de la base de datos (si es producción)
+  ReadReplicaDbInstanceArn:
+    Condition: EnvironmentIsProduction  # Solo se crea en entorno de producción
+    Description: "ARN of the Read Replica DB Instance"
+    Value: !GetAtt ReadReplica.Arn  # Valor del ARN de la instancia de réplica
+
+
